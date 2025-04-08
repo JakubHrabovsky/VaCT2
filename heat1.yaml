@@ -1,0 +1,49 @@
+heat_template_version: 2016-10-14
+
+description: >
+  HOT template na vytvorenie 2 Alpine VM v spoločnej sieti ext-net-154, bez SSH kľúča.
+
+resources:
+  security_group:
+    type: OS::Neutron::SecurityGroup
+    properties:
+      name: default-sg
+      description: Allow ICMP and SSH
+      rules:
+        - protocol: icmp
+        - protocol: tcp
+          port_range_min: 22
+          port_range_max: 22
+          remote_ip_prefix: 0.0.0.0/0
+
+  port_vm1:
+    type: OS::Neutron::Port
+    properties:
+      network: ext-net-154
+      security_groups: [ { get_resource: security_group } ]
+
+  port_vm2:
+    type: OS::Neutron::Port
+    properties:
+      network: ext-net-154
+      security_groups: [ { get_resource: security_group } ]
+
+  vm1:
+    type: OS::Nova::Server
+    properties:
+      name: vm1
+      image: alpine-3.21-kis
+      flavor: 1c1r10d
+      availability_zone: nova
+      networks:
+        - port: { get_resource: port_vm1 }
+
+  vm2:
+    type: OS::Nova::Server
+    properties:
+      name: vm2
+      image: alpine-3.21-kis
+      flavor: 1c1r10d
+      availability_zone: nova
+      networks:
+        - port: { get_resource: port_vm2 }

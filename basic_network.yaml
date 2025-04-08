@@ -1,0 +1,14 @@
+AWSTemplateFormatVersion: 2010-09-09
+
+Description: Basic network prve cviko
+
+Parameters:
+  VpcCidr:
+    Description: VpcCidr
+    Type: String
+    Default: 10.20.0.0/16
+
+  Enviroment:
+    Description: Enviroment
+    Type: String
+    Default: lab

@@ -1,0 +1,103 @@
+heat_template_version: 2016-10-14
+
+description: >
+  Úloha 2 - 2 VM, jedna v externej sieti, druhá za ňou v internej sieti cez router.
+
+parameters:
+  external_net:
+    type: string
+    default: ext-net-154
+  internal_net_name:
+    type: string
+    default: net-is#
+  internal_subnet_name:
+    type: string
+    default: subnet-is#
+  flavor:
+    type: string
+    default: 1c1r10d
+  image:
+    type: string
+    default: alpine-3.21-kis
+  availability_zone:
+    type: string
+    default: nova
+
+resources:
+  sg:
+    type: OS::Neutron::SecurityGroup
+    properties:
+      name: sg-task2
+      description: Allow ICMP and SSH
+      rules:
+        - protocol: icmp
+        - protocol: tcp
+          port_range_min: 22
+          port_range_max: 22
+          remote_ip_prefix: 0.0.0.0/0
+
+  internal_net:
+    type: OS::Neutron::Net
+    properties:
+      name: { get_param: internal_net_name }
+
+  internal_subnet:
+    type: OS::Neutron::Subnet
+    properties:
+      name: { get_param: internal_subnet_name }
+      network: { get_resource: internal_net }
+      cidr: 192.168.100.0/24
+      ip_version: 4
+      gateway_ip: 192.168.100.1
+      enable_dhcp: true
+
+  router:
+    type: OS::Neutron::Router
+    properties:
+      name: router-task2
+      external_gateway_info:
+        network: { get_param: external_net }
+
+  router_interface:
+    type: OS::Neutron::RouterInterface
+    properties:
+      router: { get_resource: router }
+      subnet: { get_resource: internal_subnet }
+
+  port_vm1:
+    type: OS::Neutron::Port
+    properties:
+      network: { get_resource: internal_net }
+      security_groups: [ { get_resource: sg } ]
+
+  port_vm2:
+    type: OS::Neutron::Port
+    properties:
+      network: { get_resource: internal_net }
+      security_groups: [ { get_resource: sg } ]
+
+  vm1:
+    type: OS::Nova::Server
+    properties:
+      name: vm-ext
+      image: { get_param: image }
+      flavor: { get_param: flavor }
+      availability_zone: { get_param: availability_zone }
+      networks:
+        - port: { get_resource: port_vm1 }
+
+  vm2:
+    type: OS::Nova::Server
+    properties:
+      name: vm-int
+      image: { get_param: image }
+      flavor: { get_param: flavor }
+      availability_zone: { get_param: availability_zone }
+      networks:
+        - port: { get_resource: port_vm2 }
+
+  floating_ip:
+    type: OS::Neutron::FloatingIP
+    properties:
+      floating_network: { get_param: external_net }
+      port_id: { get_resource: port_vm1 }
