@@ -1,0 +1,150 @@
+heat_template_version: 2016-10-14
+
+description: >
+  Úloha 3 - viacero VM v rôznych sieťach so špecifickými SG pravidlami a externou konektivitou.
+
+parameters:
+  external_net:
+    type: string
+    default: ext-net-154
+  flavor:
+    type: string
+    default: 1c05r1d
+  image:
+    type: string
+    default: cirros
+  availability_zone:
+    type: string
+    default: nova
+
+resources:
+  # Siete
+  net_a:
+    type: OS::Neutron::Net
+    properties:
+      name: net-10
+
+  subnet_a:
+    type: OS::Neutron::Subnet
+    properties:
+      name: subnet-10
+      network: { get_resource: net_a }
+      cidr: 10.0.1.0/24
+      ip_version: 4
+      gateway_ip: 10.0.1.1
+
+  net_b:
+    type: OS::Neutron::Net
+    properties:
+      name: net-172
+
+  subnet_b:
+    type: OS::Neutron::Subnet
+    properties:
+      name: subnet-172
+      network: { get_resource: net_b }
+      cidr: 172.16.99.0/24
+      ip_version: 4
+      gateway_ip: 172.16.99.1
+
+  router:
+    type: OS::Neutron::Router
+    properties:
+      name: router-task3
+      external_gateway_info:
+        network: { get_param: external_net }
+
+  router_interface_a:
+    type: OS::Neutron::RouterInterface
+    properties:
+      router: { get_resource: router }
+      subnet: { get_resource: subnet_a }
+
+  router_interface_b:
+    type: OS::Neutron::RouterInterface
+    properties:
+      router: { get_resource: router }
+      subnet: { get_resource: subnet_b }
+
+  # Security group
+  sg_common:
+    type: OS::Neutron::SecurityGroup
+    properties:
+      name: sg-task3
+      rules:
+        # ICMP
+        - protocol: icmp
+        # HTTP/HTTPS from 158.193.0.0/16
+        - protocol: tcp
+          port_range_min: 80
+          port_range_max: 80
+          remote_ip_prefix: 158.193.0.0/16
+        - protocol: tcp
+          port_range_min: 443
+          port_range_max: 443
+          remote_ip_prefix: 158.193.0.0/16
+        # DNS from 158.193.0.0/16
+        - protocol: udp
+          port_range_min: 53
+          port_range_max: 53
+          remote_ip_prefix: 158.193.0.0/16
+        # SSH (port 22) from anywhere
+        - protocol: tcp
+          port_range_min: 22
+          port_range_max: 22
+          remote_ip_prefix: 0.0.0.0/0
+        # RDP (port 3389) from anywhere
+        - protocol: tcp
+          port_range_min: 3389
+          port_range_max: 3389
+          remote_ip_prefix: 0.0.0.0/0
+
+  # Porty
+  port_pc1:
+    type: OS::Neutron::Port
+    properties:
+      network: { get_resource: net_a }
+      security_groups: [ { get_resource: sg_common } ]
+
+  port_pc2:
+    type: OS::Neutron::Port
+    properties:
+      network: { get_resource: net_b }
+      security_groups: [ { get_resource: sg_common } ]
+
+  port_pc3:
+    type: OS::Neutron::Port
+    properties:
+      network: { get_resource: net_b }
+      security_groups: [ { get_resource: sg_common } ]
+
+  # VM
+  pc1:
+    type: OS::Nova::Server
+    properties:
+      name: pc1
+      image: { get_param: image }
+      flavor: { get_param: flavor }
+      availability_zone: { get_param: availability_zone }
+      networks:
+        - port: { get_resource: port_pc1 }
+
+  pc2:
+    type: OS::Nova::Server
+    properties:
+      name: pc2
+      image: { get_param: image }
+      flavor: { get_param: flavor }
+      availability_zone: { get_param: availability_zone }
+      networks:
+        - port: { get_resource: port_pc2 }
+
+  pc3:
+    type: OS::Nova::Server
+    properties:
+      name: pc3
+      image: { get_param: image }
+      flavor: { get_param: flavor }
+      availability_zone: { get_param: availability_zone }
+      networks:
+        - port: { get_resource: port_pc3 }

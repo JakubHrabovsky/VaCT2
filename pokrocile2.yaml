@@ -1,0 +1,135 @@
+heat_template_version: 2016-10-14
+
+description: >
+  Úloha 2 - 2 VM v rôznych podsieťach s povolenou komunikáciou a špecifickými SG pravidlami.
+
+parameters:
+  external_net:
+    type: string
+    default: ext-net-154
+  flavor:
+    type: string
+    default: 1c05r1d
+  image:
+    type: string
+    default: cirros
+  availability_zone:
+    type: string
+    default: nova
+
+resources:
+  # Sieť A - PC1
+  net_a:
+    type: OS::Neutron::Net
+    properties:
+      name: net-33
+
+  subnet_a:
+    type: OS::Neutron::Subnet
+    properties:
+      name: subnet-33
+      network: { get_resource: net_a }
+      cidr: 192.168.33.0/24
+      ip_version: 4
+      gateway_ip: 192.168.33.1
+
+  # Sieť B - PC2
+  net_b:
+    type: OS::Neutron::Net
+    properties:
+      name: net-35
+
+  subnet_b:
+    type: OS::Neutron::Subnet
+    properties:
+      name: subnet-35
+      network: { get_resource: net_b }
+      cidr: 192.168.35.0/24
+      ip_version: 4
+      gateway_ip: 192.168.35.1
+
+  router:
+    type: OS::Neutron::Router
+    properties:
+      name: router-task2
+      external_gateway_info:
+        network: { get_param: external_net }
+
+  router_interface_33:
+    type: OS::Neutron::RouterInterface
+    properties:
+      router: { get_resource: router }
+      subnet: { get_resource: subnet_a }
+
+  router_interface_35:
+    type: OS::Neutron::RouterInterface
+    properties:
+      router: { get_resource: router }
+      subnet: { get_resource: subnet_b }
+
+  # Security group pre PC1 (ICMP + FTP)
+  sg_pc1:
+    type: OS::Neutron::SecurityGroup
+    properties:
+      name: sg-pc1
+      rules:
+        - protocol: icmp
+        - protocol: tcp
+          port_range_min: 20
+          port_range_max: 21
+          remote_ip_prefix: 0.0.0.0/0
+
+  # Security group pre PC2 (ICMP + FTP + HTTP/S)
+  sg_pc2:
+    type: OS::Neutron::SecurityGroup
+    properties:
+      name: sg-pc2
+      rules:
+        - protocol: icmp
+        - protocol: tcp
+          port_range_min: 20
+          port_range_max: 21
+          remote_ip_prefix: 0.0.0.0/0
+        - protocol: tcp
+          port_range_min: 80
+          port_range_max: 80
+          remote_ip_prefix: 0.0.0.0/0
+        - protocol: tcp
+          port_range_min: 443
+          port_range_max: 443
+          remote_ip_prefix: 0.0.0.0/0
+
+  # Porty pre VM
+  port_pc1:
+    type: OS::Neutron::Port
+    properties:
+      network: { get_resource: net_a }
+      security_groups: [ { get_resource: sg_pc1 } ]
+
+  port_pc2:
+    type: OS::Neutron::Port
+    properties:
+      network: { get_resource: net_b }
+      security_groups: [ { get_resource: sg_pc2 } ]
+
+  # VM PC1
+  pc1:
+    type: OS::Nova::Server
+    properties:
+      name: pc1
+      image: { get_param: image }
+      flavor: { get_param: flavor }
+      availability_zone: { get_param: availability_zone }
+      networks:
+        - port: { get_resource: port_pc1 }
+
+  # VM PC2
+  pc2:
+    type: OS::Nova::Server
+    properties:
+      name: pc2
+      image: { get_param: image }
+      flavor: { get_param: flavor }
+      availability_zone: { get_param: availability_zone }
+      networks:
+        - port: { get_resource: port_pc2 }

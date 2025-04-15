@@ -1,0 +1,107 @@
+heat_template_version: 2016-10-14
+
+description: >
+  Úloha 1 - 2 VM v internej sieti s rôznymi security group pravidlami.
+
+parameters:
+  external_net:
+    type: string
+    default: ext-net-154
+  flavor:
+    type: string
+    default: 1c05r1d
+  image:
+    type: string
+    default: cirros
+  availability_zone:
+    type: string
+    default: nova
+
+resources:
+  internal_net:
+    type: OS::Neutron::Net
+    properties:
+      name: net-u1
+
+  internal_subnet:
+    type: OS::Neutron::Subnet
+    properties:
+      name: subnet-u1
+      network: { get_resource: internal_net }
+      cidr: 192.168.88.0/24
+      ip_version: 4
+      gateway_ip: 192.168.88.1
+      enable_dhcp: true
+
+  router:
+    type: OS::Neutron::Router
+    properties:
+      name: router-u1
+      external_gateway_info:
+        network: { get_param: external_net }
+
+  router_interface:
+    type: OS::Neutron::RouterInterface
+    properties:
+      router: { get_resource: router }
+      subnet: { get_resource: internal_subnet }
+
+  sg_pc1:
+    type: OS::Neutron::SecurityGroup
+    properties:
+      name: sg-pc1
+      description: Allow ICMP and DNS (UDP/53)
+      rules:
+        - protocol: icmp
+        - protocol: udp
+          port_range_min: 53
+          port_range_max: 53
+          remote_ip_prefix: 0.0.0.0/0
+
+  sg_pc2:
+    type: OS::Neutron::SecurityGroup
+    properties:
+      name: sg-pc2
+      description: Allow ICMP and HTTP/HTTPS
+      rules:
+        - protocol: icmp
+        - protocol: tcp
+          port_range_min: 80
+          port_range_max: 80
+          remote_ip_prefix: 0.0.0.0/0
+        - protocol: tcp
+          port_range_min: 443
+          port_range_max: 443
+          remote_ip_prefix: 0.0.0.0/0
+
+  port_pc1:
+    type: OS::Neutron::Port
+    properties:
+      network: { get_resource: internal_net }
+      security_groups: [ { get_resource: sg_pc1 } ]
+
+  port_pc2:
+    type: OS::Neutron::Port
+    properties:
+      network: { get_resource: internal_net }
+      security_groups: [ { get_resource: sg_pc2 } ]
+
+  pc1:
+    type: OS::Nova::Server
+    properties:
+      name: pc1
+      image: { get_param: image }
+      flavor: { get_param: flavor }
+      availability_zone: { get_param: availability_zone }
+      networks:
+        - port: { get_resource: port_pc1 }
+
+  pc2:
+    type: OS::Nova::Server
+    properties:
+      name: pc2
+      image: { get_param: image }
+      flavor: { get_param: flavor }
+      availability_zone: { get_param: availability_zone }
+      networks:
+        - port: { get_resource: port_pc2 }

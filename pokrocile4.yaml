@@ -1,0 +1,164 @@
+heat_template_version: 2016-10-14
+
+description: >
+  Úloha 4 – 3 VM, jedna s dvoma interfacami (ext+int), ostatné dve len v internej sieti. SG podľa zadania.
+
+parameters:
+  external_net:
+    type: string
+    default: ext-net-154
+  flavor:
+    type: string
+    default: 1c05r1d
+  image:
+    type: string
+    default: cirros
+  availability_zone:
+    type: string
+    default: nova
+
+resources:
+  # Interná sieť
+  int_net:
+    type: OS::Neutron::Net
+    properties:
+      name: int-net-55
+
+  int_subnet:
+    type: OS::Neutron::Subnet
+    properties:
+      name: int-subnet-55
+      network: { get_resource: int_net }
+      cidr: 10.255.55.0/24
+      ip_version: 4
+      gateway_ip: 10.255.55.1
+
+  # Security group – spoločné pravidlá (ICMP + SSH/RDP)
+  sg_common:
+    type: OS::Neutron::SecurityGroup
+    properties:
+      name: sg-common
+      rules:
+        - protocol: icmp
+        - protocol: tcp
+          port_range_min: 22   # SSH
+          port_range_max: 22
+          remote_ip_prefix: 158.193.0.0/16
+        - protocol: tcp
+          port_range_min: 3389  # RDP
+          port_range_max: 3389
+          remote_ip_prefix: 158.193.0.0/16
+
+  # Security group – SMB pre PC2
+  sg_pc2:
+    type: OS::Neutron::SecurityGroup
+    properties:
+      name: sg-pc2
+      rules:
+        - protocol: tcp
+          port_range_min: 445
+          port_range_max: 445
+          remote_ip_prefix: 0.0.0.0/0
+
+  # Security group – HTTP/S + DNS z RFC1918 (PC1/PC3)
+  sg_rfc1918:
+    type: OS::Neutron::SecurityGroup
+    properties:
+      name: sg-rfc1918
+      rules:
+        # HTTP
+        - protocol: tcp
+          port_range_min: 80
+          port_range_max: 80
+          remote_ip_prefix: 10.0.0.0/8
+        - protocol: tcp
+          port_range_min: 80
+          port_range_max: 80
+          remote_ip_prefix: 172.16.0.0/12
+        - protocol: tcp
+          port_range_min: 80
+          port_range_max: 80
+          remote_ip_prefix: 192.168.0.0/16
+        # HTTPS
+        - protocol: tcp
+          port_range_min: 443
+          port_range_max: 443
+          remote_ip_prefix: 10.0.0.0/8
+        - protocol: tcp
+          port_range_min: 443
+          port_range_max: 443
+          remote_ip_prefix: 172.16.0.0/12
+        - protocol: tcp
+          port_range_min: 443
+          port_range_max: 443
+          remote_ip_prefix: 192.168.0.0/16
+        # DNS
+        - protocol: udp
+          port_range_min: 53
+          port_range_max: 53
+          remote_ip_prefix: 10.0.0.0/8
+        - protocol: udp
+          port_range_min: 53
+          port_range_max: 53
+          remote_ip_prefix: 172.16.0.0/12
+        - protocol: udp
+          port_range_min: 53
+          port_range_max: 53
+          remote_ip_prefix: 192.168.0.0/16
+
+  # Porty pre pc1 (dva interfaces)
+  port_pc1_ext:
+    type: OS::Neutron::Port
+    properties:
+      network: { get_param: external_net }
+      security_groups: [ { get_resource: sg_common }, { get_resource: sg_rfc1918 } ]
+
+  port_pc1_int:
+    type: OS::Neutron::Port
+    properties:
+      network: { get_resource: int_net }
+      security_groups: [ { get_resource: sg_common }, { get_resource: sg_rfc1918 } ]
+
+  port_pc2:
+    type: OS::Neutron::Port
+    properties:
+      network: { get_resource: int_net }
+      security_groups: [ { get_resource: sg_common }, { get_resource: sg_pc2 } ]
+
+  port_pc3:
+    type: OS::Neutron::Port
+    properties:
+      network: { get_resource: int_net }
+      security_groups: [ { get_resource: sg_common }, { get_resource: sg_rfc1918 } ]
+
+  # VM definície
+  pc1:
+    type: OS::Nova::Server
+    properties:
+      name: pc1
+      image: { get_param: image }
+      flavor: { get_param: flavor }
+      availability_zone: { get_param: availability_zone }
+      networks:
+        - port: { get_resource: port_pc1_ext }
+        - port: { get_resource: port_pc1_int }
+
+  pc2:
+    type: OS::Nova::Server
+    properties:
+      name: pc2
+      image: { get_param: image }
+      flavor: { get_param: flavor }
+      availability_zone: { get_param: availability_zone }
+      networks:
+        - port: { get_resource: port_pc2 }
+
+  pc3:
+    type: OS::Nova::Server
+    properties:
+      name: pc3
+      image: { get_param: image }
+      flavor: { get_param: flavor }
+      availability_zone: { get_param: availability_zone }
+      networks:
+        - port: { get_resource: port_pc3 }

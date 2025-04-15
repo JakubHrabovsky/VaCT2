@@ -1,0 +1,38 @@
+heat_template_version: 2016-10-14
+
+description: >
+  Úloha 10 – vytvorí toľko VM, koľko zadá používateľ (predvolene 2).
+
+parameters:
+  vm_count:
+    type: number
+    default: 2
+    description: Počet virtuálnych strojov
+  network:
+    type: string
+    default: ext-net-154
+  flavor:
+    type: string
+    default: 1c05r1d
+  image:
+    type: string
+    default: cirros
+
+resources:
+  vm_group:
+    type: OS::Heat::ResourceGroup
+    properties:
+      count: { get_param: vm_count }
+      resource_def:
+        type: OS::Nova::Server
+        properties:
+          name: { str_replace: { template: "vm-%index%", params: { "%index%": "%index%" } } }
+          flavor: { get_param: flavor }
+          image: { get_param: image }
+          networks:
+            - network: { get_param: network }
+
+outputs:
+  created_vms:
+    description: Zoznam vytvorených VM (názvy)
+    value: { get_attr: [ vm_group, refs_map ] }

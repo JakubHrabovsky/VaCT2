@@ -1,0 +1,61 @@
+heat_template_version: 2016-10-14
+
+description: >
+  Úloha 9 – 1 VM + SG s SSH. Telnet povolený len ak používateľ výslovne súhlasí.
+
+parameters:
+  network:
+    type: string
+    default: ext-net-154
+  image:
+    type: string
+    default: cirros
+  flavor:
+    type: string
+    default: 1c05r1d
+  allow_telnet:
+    type: boolean
+    default: false
+    description: Povoliť Telnet (port 23)
+
+resources:
+  security_group:
+    type: OS::Neutron::SecurityGroup
+    properties:
+      name: sg-uloha9
+      rules:
+        - protocol: tcp
+          port_range_min: 22
+          port_range_max: 22
+          remote_ip_prefix: 0.0.0.0/0
+        # podmienečne pridáme telnet (port 23)
+        - if:
+            - allow_telnet_enabled
+            - protocol: tcp
+              port_range_min: 23
+              port_range_max: 23
+              remote_ip_prefix: 0.0.0.0/0
+            - null
+
+  port:
+    type: OS::Neutron::Port
+    properties:
+      network: { get_param: network }
+      security_groups: [ { get_resource: security_group } ]
+
+  server:
+    type: OS::Nova::Server
+    properties:
+      name: uloha9-vm
+      image: { get_param: image }
+      flavor: { get_param: flavor }
+      networks:
+        - port: { get_resource: port }
+
+conditions:
+  allow_telnet_enabled: { get_param: allow_telnet }
+
+outputs:
+  vm_ip:
+    description: IP adresa VM
+    value: { get_attr: [ server, first_address ] }

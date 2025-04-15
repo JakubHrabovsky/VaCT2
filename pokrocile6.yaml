@@ -1,0 +1,134 @@
+heat_template_version: 2016-10-14
+
+description: >
+  Úloha 6 – 3 VM s routerom, jedna s verejnou IP, zvyšok len interne.
+
+parameters:
+  external_net:
+    type: string
+    default: ext-net-154
+  image:
+    type: string
+    default: cirros
+  flavor:
+    type: string
+    default: 1c05r1d
+  availability_zone:
+    type: string
+    default: nova
+
+resources:
+  # Interná sieť a subnet
+  int_net:
+    type: OS::Neutron::Net
+    properties:
+      name: int-net
+
+  int_subnet:
+    type: OS::Neutron::Subnet
+    properties:
+      name: int-subnet
+      network: { get_resource: int_net }
+      cidr: 10.0.0.0/24
+      gateway_ip: 10.0.0.1
+      ip_version: 4
+      enable_dhcp: true
+
+  # Router prepájajúci ext <-> int
+  router:
+    type: OS::Neutron::Router
+    properties:
+      name: router-u6
+      external_gateway_info:
+        network: { get_param: external_net }
+
+  router_interface:
+    type: OS::Neutron::RouterInterface
+    properties:
+      router: { get_resource: router }
+      subnet: { get_resource: int_subnet }
+
+  # Security group – povolíme ICMP a SSH (voliteľne upraviť)
+  sg:
+    type: OS::Neutron::SecurityGroup
+    properties:
+      name: sg-u6
+      rules:
+        - protocol: icmp
+        - protocol: tcp
+          port_range_min: 22
+          port_range_max: 22
+          remote_ip_prefix: 0.0.0.0/0
+
+  # Porty pre VM
+  port_jump_ext:
+    type: OS::Neutron::Port
+    properties:
+      network: { get_param: external_net }
+      security_groups: [ { get_resource: sg } ]
+
+  port_jump_int:
+    type: OS::Neutron::Port
+    properties:
+      network: { get_resource: int_net }
+      security_groups: [ { get_resource: sg } ]
+
+  port_proxy:
+    type: OS::Neutron::Port
+    properties:
+      network: { get_resource: int_net }
+      fixed_ips:
+        - ip_address: 10.0.0.10
+      security_groups: [ { get_resource: sg } ]
+
+  port_app:
+    type: OS::Neutron::Port
+    properties:
+      network: { get_resource: int_net }
+      fixed_ips:
+        - ip_address: 10.0.0.25
+      security_groups: [ { get_resource: sg } ]
+
+  # VM definície
+  jump:
+    type: OS::Nova::Server
+    properties:
+      name: jump
+      image: { get_param: image }
+      flavor: { get_param: flavor }
+      availability_zone: { get_param: availability_zone }
+      networks:
+        - port: { get_resource: port_jump_ext }
+        - port: { get_resource: port_jump_int }
+
+  proxy:
+    type: OS::Nova::Server
+    properties:
+      name: proxy
+      image: { get_param: image }
+      flavor: { get_param: flavor }
+      availability_zone: { get_param: availability_zone }
+      networks:
+        - port: { get_resource: port_proxy }
+
+  app:
+    type: OS::Nova::Server
+    properties:
+      name: app
+      image: { get_param: image }
+      flavor: { get_param: flavor }
+      availability_zone: { get_param: availability_zone }
+      networks:
+        - port: { get_resource: port_app }
+
+  # Floating IP pre jump host
+  floating_ip_jump:
+    type: OS::Neutron::FloatingIP
+    properties:
+      floating_network: { get_param: external_net }
+      port_id: { get_resource: port_jump_ext }
+
+outputs:
+  jump_floating_ip:
+    description: Verejná IP pre jump host
+    value: { get_attr: [ floating_ip_jump, floating_ip_address ] }
